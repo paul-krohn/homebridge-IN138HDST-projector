@@ -110,7 +110,10 @@ IN138HDSTProjector.prototype = {
         // 1. Get challenge nonce
         const loginPage = await this.http.get(`${base}/login.htm`);
         const challenge = parseInputValue(loginPage.data, 'Challenge');
-        if (!challenge) throw new Error('No Challenge field found in login page');
+        if (!challenge) {
+            this.log.error('Login page HTML (first 1000 chars):', loginPage.data.substring(0, 1000));
+            throw new Error('No Challenge field found in login page');
+        }
         if (this.debug) this.log.debug('Challenge:', challenge);
 
         // 2. Response = hex_md5(username + password + challenge)
