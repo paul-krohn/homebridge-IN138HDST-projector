@@ -1,7 +1,7 @@
 {
   "name": "homebridge-IN138HDST-projector",
   "version": "1.0.0",
-  "description": "Homebridge plugin for InFocus IN138HDST projector — HTML-based control with MD5 challenge-response login",
+  "description": "Homebridge plugin for InFocus IN138HDST projector — telnet control",
   "main": "index.js",
   "license": "MIT",
   "repository": {
@@ -14,9 +14,7 @@
     "projector",
     "IN138HDST"
   ],
-  "dependencies": {
-    "axios": "^1.6.3"
-  },
+  "dependencies": {},
   "engines": {
     "homebridge": ">=1.5.0",
     "node": ">=14.0.0"
