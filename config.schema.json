@@ -1,0 +1,49 @@
+{
+  "pluginAlias": "IN138HDST Projector",
+  "pluginType": "accessory",
+  "schema": {
+    "name": {
+      "title": "Name",
+      "type": "string",
+      "required": true,
+      "default": "Projector"
+    },
+    "ipAddress": {
+      "title": "IP Address",
+      "type": "string",
+      "required": true,
+      "default": "192.168.1.57"
+    },
+    "username": {
+      "title": "Username",
+      "type": "string",
+      "required": false,
+      "default": "admin"
+    },
+    "password": {
+      "title": "Password",
+      "type": "string",
+      "required": true
+    },
+    "timeout": {
+      "title": "Timeout (seconds)",
+      "type": "integer",
+      "required": false,
+      "default": 10,
+      "description": "HTTP request timeout in seconds."
+    },
+    "refreshInterval": {
+      "title": "Refresh Interval (seconds)",
+      "type": "integer",
+      "required": false,
+      "default": 15,
+      "description": "How often to poll the projector for power state. Polling is automatically suppressed during power-on warm-up (60 s) and power-off cooldown (5 min)."
+    },
+    "debug": {
+      "title": "Debug Logging",
+      "type": "boolean",
+      "required": false,
+      "default": false
+    }
+  }
+}
