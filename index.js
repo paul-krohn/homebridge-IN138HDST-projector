@@ -28,8 +28,8 @@ module.exports = function (homebridge) {
 function parseInputValue(html, name) {
     const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const patterns = [
-        new RegExp(`<input[^>]+name=["']?${esc}["']?[^>]*value=["']?([^"'\\s>]*)`, 'i'),
-        new RegExp(`<input[^>]+value=["']?([^"'\\s>]*)[^>]*name=["']?${esc}["']?`, 'i'),
+        new RegExp(`<input[^>]+name=["']?${esc}["']?[^>]*value=\\s*["']?([^"'\\s>]*)`, 'i'),
+        new RegExp(`<input[^>]+value=\\s*["']?([^"'\\s>]*)[^>]*name=["']?${esc}["']?`, 'i'),
     ];
     for (const re of patterns) {
         const m = html.match(re);
