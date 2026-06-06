@@ -1,20 +1,13 @@
 'use strict';
 
-const net = require('net');
+const { telnetQuery, telnetSend, parseTelnetValue } = require('./telnet');
 
 const PLUGIN_NAME = 'homebridge-IN138HDST-projector';
 const POWER_NAME  = 'IN138HDST Projector';
 
-const TELNET_PORT    = 23;
 const TELNET_CMD_ON  = '(PWR1)';
 const TELNET_CMD_OFF = '(PWR0)';
 const TELNET_CMD_PWR = '(PWR?)';
-
-// Response format: (min-max,current)  e.g. "(0-1,1)"
-function parseTelnetValue(data) {
-    const m = data.match(/\(\d[\d-]*,(\d+)\)/);
-    return m ? parseInt(m[1], 10) : null;
-}
 
 var Service, Characteristic;
 
@@ -24,59 +17,6 @@ module.exports = function (homebridge) {
     Characteristic = homebridge.hap.Characteristic;
     homebridge.registerAccessory(PLUGIN_NAME, POWER_NAME, IN138HDSTProjector);
 };
-
-// ── Telnet helpers ────────────────────────────────────────────────────────────
-
-// Wait for the projector prompt, send a command, collect the response.
-function telnetQuery(host, command, timeout) {
-    return new Promise((resolve, reject) => {
-        const client = net.createConnection(TELNET_PORT, host);
-        client.setTimeout(timeout);
-        let prompted = false;
-        let buf = '';
-
-        client.on('data', chunk => {
-            const text = chunk.toString('ascii');
-            if (!prompted) {
-                // Prompt received — send the command
-                prompted = true;
-                client.write(command);
-                // Close after 500 ms to collect the response
-                setTimeout(() => client.destroy(), 500);
-            } else {
-                buf += text;
-            }
-        });
-
-        client.on('close', () => resolve(buf));
-        client.on('error', reject);
-        client.on('timeout', () => {
-            client.destroy();
-            reject(new Error(`Telnet timeout connecting to ${host}:${TELNET_PORT}`));
-        });
-    });
-}
-
-// Wait for prompt, send a fire-and-forget command (no response needed).
-function telnetSend(host, command, timeout) {
-    return new Promise((resolve, reject) => {
-        const client = net.createConnection(TELNET_PORT, host);
-        client.setTimeout(timeout);
-
-        client.once('data', () => {
-            client.write(command);
-            setTimeout(() => { client.destroy(); resolve(); }, 300);
-        });
-
-        client.on('error', reject);
-        client.on('timeout', () => {
-            client.destroy();
-            reject(new Error(`Telnet timeout connecting to ${host}:${TELNET_PORT}`));
-        });
-    });
-}
-
-// ── Power accessory ───────────────────────────────────────────────────────────
 
 function IN138HDSTProjector(log, config) {
     this.log             = log;
