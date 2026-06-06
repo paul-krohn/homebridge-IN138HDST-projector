@@ -9,13 +9,21 @@ const PLUGIN_NAME  = 'homebridge-IN138HDST-projector';
 const POWER_NAME   = 'IN138HDST Projector';
 const REBOOT_NAME  = 'IN138HDST Projector Reboot';
 
-// The real admin page is ~20 KB; the unauthenticated frameset is ~1 KB.
-const MIN_CONTROL_PAGE_BYTES = 5000;
-
-// Telnet port — unauthenticated, used for power commands only.
-const TELNET_PORT = 23;
+// Telnet port — unauthenticated
+const TELNET_PORT    = 23;
 const TELNET_CMD_ON  = '(PWR1)';
 const TELNET_CMD_OFF = '(PWR0)';
+const TELNET_CMD_PWR = '(PWR?)';
+
+// Response format: (min-max,current)  e.g. "(0-1,1)"
+// Also handles SYS: "(0-18,7)"
+function parseTelnetValue(data) {
+    const m = data.match(/\(\d[\d-]*,(\d+)\)/);
+    return m ? parseInt(m[1], 10) : null;
+}
+
+// The real admin page is ~20 KB; the unauthenticated frameset is ~1 KB.
+const MIN_CONTROL_PAGE_BYTES = 5000;
 
 var Service, Characteristic;
 
@@ -57,26 +65,50 @@ function parseHiddenInputs(html) {
     return fields;
 }
 
-// ── Telnet helper ─────────────────────────────────────────────────────────────
+// ── Telnet helpers ────────────────────────────────────────────────────────────
 
-function telnetCommand(host, command, timeout) {
+// Write-only: send a command and close (power on/off).
+function telnetSend(host, command, timeout) {
     return new Promise((resolve, reject) => {
         const client = net.createConnection(TELNET_PORT, host);
         client.setTimeout(timeout);
         client.on('connect', () => {
             client.write(command);
-            // Brief pause to let the projector receive it before we close
             setTimeout(() => { client.destroy(); resolve(); }, 300);
         });
         client.on('error', reject);
         client.on('timeout', () => {
             client.destroy();
-            reject(new Error(`Telnet connection to ${host}:${TELNET_PORT} timed out`));
+            reject(new Error(`Telnet timeout connecting to ${host}:${TELNET_PORT}`));
         });
     });
 }
 
-// ── Session mixin (shared login logic) ───────────────────────────────────────
+// Read: send a query command, collect the response, return raw string.
+function telnetQuery(host, command, timeout) {
+    return new Promise((resolve, reject) => {
+        const client = net.createConnection(TELNET_PORT, host);
+        client.setTimeout(timeout);
+        let buf = '';
+
+        client.on('connect', () => {
+            client.write(command);
+            // Collect for 500 ms then close
+            setTimeout(() => client.destroy(), 500);
+        });
+        client.on('data', chunk => {
+            buf += chunk.toString('ascii');
+        });
+        client.on('close', () => resolve(buf));
+        client.on('error', reject);
+        client.on('timeout', () => {
+            client.destroy();
+            reject(new Error(`Telnet timeout connecting to ${host}:${TELNET_PORT}`));
+        });
+    });
+}
+
+// ── Session mixin (HTTP login — used only by Reboot accessory) ────────────────
 
 function SessionMixin(ipAddress, username, password, timeout, log) {
     this.ipAddress = ipAddress;
@@ -147,13 +179,9 @@ function IN138HDSTProjector(log, config) {
     this.log             = log;
     this.name            = config['name'];
     this.ipAddress       = config['ipAddress'];
-    this.username        = config['username'] || 'admin';
-    this.password        = config['password'];
     this.timeout         = (config['timeout']         || 10) * 1000;
     this.refreshInterval = (config['refreshInterval'] || 15) * 1000;
     this.debug           = config['debug'] || false;
-
-    SessionMixin.call(this, this.ipAddress, this.username, this.password, this.timeout, log);
 
     this.state         = false;
     this.pollTimer     = null;
@@ -180,13 +208,13 @@ IN138HDSTProjector.prototype = {
 
         if (!this.cooldownTimer) {
             try {
-                const html = await this.fetchPage('/control.htm');
-                const pwr  = parseInputValue(html, 'pwr');
+                const raw = await telnetQuery(this.ipAddress, TELNET_CMD_PWR, this.timeout);
+                const pwr = parseTelnetValue(raw);
                 if (pwr === null) {
-                    this.log.warn('Could not parse pwr field');
+                    this.log.warn('Could not parse PWR response:', raw.trim());
                 } else {
-                    const newState = pwr === '1';
-                    if (this.debug) this.log.debug(`Poll: pwr=${pwr}`);
+                    const newState = pwr === 1;
+                    if (this.debug) this.log.debug(`Poll: PWR=${pwr}`);
                     if (newState !== this.state) {
                         this.state = newState;
                         this.switchService
@@ -207,7 +235,7 @@ IN138HDSTProjector.prototype = {
         callback(null);
         this.log(`Sending power ${powerOn ? 'ON' : 'OFF'} via telnet`);
         try {
-            await telnetCommand(this.ipAddress, powerOn ? TELNET_CMD_ON : TELNET_CMD_OFF, this.timeout);
+            await telnetSend(this.ipAddress, powerOn ? TELNET_CMD_ON : TELNET_CMD_OFF, this.timeout);
             this.log(`Power ${powerOn ? 'ON' : 'OFF'} sent`);
             this.state = powerOn;
 
@@ -227,8 +255,6 @@ IN138HDSTProjector.prototype = {
         return [this.informationService, this.switchService];
     },
 };
-
-Object.assign(IN138HDSTProjector.prototype, SessionMixin.prototype);
 
 // ── Reboot accessory ──────────────────────────────────────────────────────────
 
@@ -264,17 +290,13 @@ IN138HDSTReboot.prototype = {
         try {
             const html = await this.fetchPage('/RebootSystem.htm');
 
-            // Find the form action and submit the Apply button
             const actionMatch = html.match(/<form[^>]+action=\s*["']?([^"'\s>]+)/i);
-            const action = actionMatch
-                ? actionMatch[1]
-                : '/tgi/RebootSystem.tgi';
+            const action = actionMatch ? actionMatch[1] : '/tgi/RebootSystem.tgi';
             const url = action.startsWith('http')
                 ? action
                 : `http://${this.ipAddress}${action.startsWith('/') ? '' : '/'}${action}`;
 
             const fields = parseHiddenInputs(html);
-            // Find the Apply button and include it
             const applyMatch = html.match(/<input[^>]+value=\s*["']?Apply["']?[^>]*/i);
             if (applyMatch) {
                 const nameM = applyMatch[0].match(/name=\s*["']?([^"'\s>]+)/i);
