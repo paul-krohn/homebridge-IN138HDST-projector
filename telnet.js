@@ -10,56 +10,31 @@ function parseTelnetValue(data) {
     return m ? parseInt(m[1], 10) : null;
 }
 
-// Send a query command on an already-prompted socket, retrying if needed.
-function queryWithRetry(client, command, retryMs, maxRetries, debug) {
+// Wait for the projector prompt, send a query command, return the response.
+// The projector can take several seconds to reply — just wait for the timeout.
+function telnetQuery(host, command, timeout, { debug = false } = {}) {
     return new Promise((resolve, reject) => {
+        const client = net.createConnection(TELNET_PORT, host);
+        client.setTimeout(timeout);
+        let prompted = false;
         let buf = '';
-        let attempts = 0;
-        let retryTimer = null;
-
-        function trySend() {
-            attempts++;
-            buf = '';
-            if (debug) process.stderr.write(`  [telnet] sending ${command}\\r (attempt ${attempts})\n`);
-            client.write(command + '\r');
-            retryTimer = setTimeout(() => {
-                if (attempts < maxRetries) {
-                    trySend();
-                } else {
-                    reject(new Error(`No response to ${command} after ${maxRetries} attempts`));
-                }
-            }, retryMs);
-        }
 
         client.on('data', chunk => {
             const text = chunk.toString('ascii');
             if (debug) process.stderr.write(`  [telnet] data: ${JSON.stringify(text)}\n`);
-            buf += text;
-            if (/\(\d[\d-]*,\d+\)/.test(buf)) {
-                clearTimeout(retryTimer);
-                resolve(buf);
+            if (!prompted) {
+                prompted = true;
+                if (debug) process.stderr.write(`  [telnet] prompt received, sending ${command}\\r\n`);
+                client.write(command + '\r');
+            } else {
+                buf += text;
+                if (/\(\d[\d-]*,\d+\)/.test(buf)) {
+                    client.destroy();
+                }
             }
         });
 
-        trySend();
-    });
-}
-
-// Wait for the projector prompt, send a query command, return the response.
-// Retries if the projector doesn't reply (observed behaviour with busy/slow unit).
-function telnetQuery(host, command, timeout, { maxRetries = 3, debug = false } = {}) {
-    return new Promise((resolve, reject) => {
-        const client = net.createConnection(TELNET_PORT, host);
-        client.setTimeout(timeout);
-
-        client.once('data', chunk => {
-            if (debug) process.stderr.write(`  [telnet] prompt: ${JSON.stringify(chunk.toString('ascii'))}\n`);
-            const retryMs = Math.floor(timeout / (maxRetries + 1));
-            queryWithRetry(client, command, retryMs, maxRetries, debug)
-                .then(buf => { client.destroy(); resolve(buf); })
-                .catch(err => { client.destroy(); reject(err); });
-        });
-
+        client.on('close', () => resolve(buf));
         client.on('error', reject);
         client.on('timeout', () => {
             client.destroy();

@@ -14,23 +14,12 @@
       "required": true,
       "default": "192.168.1.57"
     },
-    "username": {
-      "title": "Username",
-      "type": "string",
-      "required": false,
-      "default": "admin"
-    },
-    "password": {
-      "title": "Password",
-      "type": "string",
-      "required": true
-    },
     "timeout": {
       "title": "Timeout (seconds)",
       "type": "integer",
       "required": false,
-      "default": 10,
-      "description": "HTTP request timeout in seconds."
+      "default": 15,
+      "description": "Telnet response timeout in seconds. The projector can take ~5s to reply."
     },
     "refreshInterval": {
       "title": "Refresh Interval (seconds)",

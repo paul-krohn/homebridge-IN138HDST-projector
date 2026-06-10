@@ -22,7 +22,7 @@ function IN138HDSTProjector(log, config) {
     this.log             = log;
     this.name            = config['name'];
     this.ipAddress       = config['ipAddress'];
-    this.timeout         = (config['timeout']         || 10) * 1000;
+    this.timeout         = (config['timeout']         || 15) * 1000;
     this.refreshInterval = (config['refreshInterval'] || 15) * 1000;
     this.debug           = config['debug'] || false;
 

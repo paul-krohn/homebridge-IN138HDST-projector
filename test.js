@@ -7,7 +7,7 @@
 const { telnetQuery, telnetSend, parseTelnetValue } = require('./telnet');
 
 const IP      = '192.168.1.57';
-const TIMEOUT = 10000;
+const TIMEOUT = 15000;
 
 const COMMANDS = {
     status: '(PWR?)',
